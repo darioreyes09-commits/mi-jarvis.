@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS · AFI</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f1724; color: #e5e7eb;
+         display: flex; flex-direction: column; align-items: center; padding: 2rem; min-height: 100vh; margin: 0; }
+  #log { width: 100%; max-width: 640px; flex: 1; overflow-y: auto; margin-bottom: 1rem; }
+  .msg { padding: .6rem .9rem; border-radius: 10px; margin: .4rem 0; white-space: pre-wrap; }
+  .tu { background: #1e3a5f; text-align: right; }
+  .ia { background: #1f2937; }
+  button { background: #b08d57; color: #0f1724; border: 0; padding: .9rem 1.6rem;
+           border-radius: 999px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; }
+  #estado { font-size: .85rem; color: #9ca3af; margin: .5rem 0; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<div id="log"></div>
+<div id="estado"></div>
+<button id="btn">🎤 Hablar</button>
+
+<script>
+const log = document.getElementById("log");
+const btn = document.getElementById("btn");
+const estado = document.getElementById("estado");
+const historial = [];
+
+const SR = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+SR.lang = "es-DO";
+SR.continuous = false;
+SR.interimResults = false;
+
+function agregar(texto, clase) {
+  const d = document.createElement("div");
+  d.className = "msg " + clase;
+  d.textContent = texto;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+
+function hablar(texto) {
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(texto);
+  u.lang = "es-ES";
+  u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+
+async function enviar(texto) {
+  agregar(texto, "tu");
+  historial.push({ role: "user", content: texto });
+  btn.disabled = true;
+  estado.textContent = "Pensando…";
+
+  try {
+    const res = await fetch("/.netlify/functions/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: historial })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Error del servidor");
+
+    historial.push({ role: "assistant", content: data.text });
+    agregar(data.text, "ia");
+    hablar(data.text);
+  } catch (e) {
+    agregar("Error: " + e.message, "ia");
+  } finally {
+    btn.disabled = false;
+    estado.textContent = "";
+  }
+}
+
+btn.onclick = () => { estado.textContent = "Escuchando…"; SR.start(); };
+SR.onresult = e => enviar(e.results[0][0].transcript);
+SR.onerror = e => { estado.textContent = "Error de voz: " + e.error; btn.disabled = false; };
+SR.onend = () => { if (estado.textContent === "Escuchando…") estado.textContent = ""; };
+</script>
+</body>
+</html>
